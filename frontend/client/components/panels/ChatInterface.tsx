@@ -42,8 +42,10 @@ import {
   SavedChat,
   AppSettings,
 } from "@/hooks/use-optimized-tia-app";
-import { useSearch } from "@/hooks/use-optimized-tia-app";
+import { useSearch } from "@/hooks/use-optimized-tia-app"; // This might be from the same file or a different one
 import { Language, Translations } from "@/lib/i18n";
+import { queryDocuments } from "@/services/api"; // API service
+import { useToast } from "@/hooks/use-toast"; // Toast notifications
 
 interface ChatInterfaceProps {
   chatState: {
@@ -105,57 +107,94 @@ const ChatInterface = memo<ChatInterfaceProps>(
   }) => {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const chatFileInputRef = useRef<HTMLInputElement>(null);
+    const { toast } = useToast();
+    const userId = "default_user"; // Placeholder
+    const [isBotReplying, setIsBotReplying] = React.useState(false);
+
 
     const { searchQuery, filteredData, updateSearchQuery } = useSearch(
       chatState.messages,
     );
 
-    const handleSendMessage = useCallback(() => {
-      if (!chatState.currentMessage.trim()) return;
+    const handleSendMessage = useCallback(async () => {
+      const currentMessageContent = chatState.currentMessage.trim();
+      if (!currentMessageContent) return;
 
       const userMessage: ChatMessage = {
         id: Date.now().toString(),
         type: "user",
-        content: chatState.currentMessage,
+        content: currentMessageContent,
         timestamp: new Date().toISOString(),
       };
 
-      const newMessages = [...chatState.messages, userMessage];
-      onChatAction((prev) => ({ ...prev, messages: newMessages }));
+      // Add user message to state immediately
+      onChatAction((prev) => ({
+        ...prev,
+        messages: [...prev.messages, userMessage],
+        currentMessage: "", // Clear input field
+      }));
 
-      // Update current chat
-      onSavedChatsAction((prev) =>
-        prev.map((chat) =>
+      // Update current chat in saved chats (optimistic update for user message)
+      onSavedChatsAction((prevSaved) =>
+        prevSaved.map((chat) =>
           chat.id === chatState.currentChatId
-            ? { ...chat, messages: newMessages }
+            ? { ...chat, messages: [...chat.messages, userMessage] }
             : chat,
         ),
       );
 
-      // Simulate bot response
-      setTimeout(() => {
+      setIsBotReplying(true);
+
+      try {
+        const backendResponse = await queryDocuments(currentMessageContent, userId);
+
         const botMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
+          id: (Date.now() + 1).toString(), // Ensure unique ID
           type: "bot",
-          content: `I understand you're asking about "${chatState.currentMessage}". Based on the documents in your database, here's what I found. You can find more details in the Employee Handbook and Security Guidelines.`,
+          content: backendResponse.answer,
           timestamp: new Date().toISOString(),
-          documentReferences: ["doc1", "doc2"],
+          // Assuming backendResponse.sources is an array of strings or objects
+          // that can be mapped to string document references.
+          // If sources are objects, extract the relevant identifier (e.g., source.filename)
+          documentReferences: backendResponse.sources ? backendResponse.sources.map((s: any) => typeof s === 'string' ? s : s.source || s.filename || 'Unknown Source') : [],
         };
 
-        const updatedMessages = [...newMessages, botMessage];
-        onChatAction((prev) => ({ ...prev, messages: updatedMessages }));
+        // Add bot message to state
+        onChatAction((prev) => ({
+          ...prev,
+          messages: [...prev.messages, botMessage],
+        }));
 
-        onSavedChatsAction((prev) =>
-          prev.map((chat) =>
+        // Update current chat in saved chats with bot message
+        onSavedChatsAction((prevSaved) =>
+          prevSaved.map((chat) =>
             chat.id === chatState.currentChatId
-              ? { ...chat, messages: updatedMessages }
+              ? { ...chat, messages: [...chat.messages, botMessage] }
               : chat,
           ),
         );
-      }, 1500);
 
-      onChatAction((prev) => ({ ...prev, currentMessage: "" }));
-    }, [chatState, onChatAction, onSavedChatsAction]);
+      } catch (error) {
+        console.error("Error querying documents:", error);
+        toast({
+          title: "Error",
+          description: (error as Error)?.message || "Failed to get response from bot.",
+          variant: "destructive",
+        });
+        // Optionally add an error message to the chat
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          type: "bot",
+          content: "Sorry, I encountered an error trying to respond.",
+          timestamp: new Date().toISOString(),
+        };
+        onChatAction((prev) => ({
+             ...prev, messages: [...prev.messages, errorMessage]
+        }));
+      } finally {
+        setIsBotReplying(false);
+      }
+    }, [chatState, onChatAction, onSavedChatsAction, toast, userId]);
 
     const handleSaveConversation = useCallback(() => {
       const chatName =
@@ -574,8 +613,9 @@ const ChatInterface = memo<ChatInterfaceProps>(
                 onClick={handleSendMessage}
                 className="bg-blue-600 hover:bg-blue-700"
                 size="sm"
+                disabled={isBotReplying || !chatState.currentMessage.trim()}
               >
-                <Send className="h-4 w-4" />
+                {isBotReplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
 
               {/* Chat File Upload */}

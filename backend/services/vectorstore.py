@@ -23,3 +23,14 @@ def delete_document_from_vectorstore(user_id: str, filename: str):
     ids_to_delete = [doc["id"] for doc in collection.get()["metadatas"] if doc.get("source") == filename]
     if ids_to_delete:
         collection.delete(ids=ids_to_delete)
+
+def add_documents_to_vectorstore(user_id: str, documents: list):
+    """Adds processed document chunks to the vector store."""
+    if not documents:
+        return
+
+    db = get_vectorstore(user_id)
+    # Langchain's Chroma wrapper handles adding documents and their embeddings.
+    # It extracts text from Document objects and uses the embedding_function.
+    db.add_documents(documents)
+    print(f"Added {len(documents)} document chunks to vector store for user {user_id}.")
