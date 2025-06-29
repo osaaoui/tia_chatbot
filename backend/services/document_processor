@@ -1,0 +1,22 @@
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from services.vectorstore import get_vectorstore
+import tempfile
+
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+embedder = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+
+def process_and_store_document(file_bytes: bytes, filename: str, user_id: str):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+
+    loader = PyPDFLoader(tmp_path)
+    pages = loader.load_and_split()
+    chunks = splitter.split_documents(pages)
+    for chunk in chunks:
+        chunk.metadata["source"] = filename
+
+    vectorstore = get_vectorstore(user_id)
+    vectorstore.add_documents(chunks)
