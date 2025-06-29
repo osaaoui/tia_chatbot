@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useState } from "react"; // Added useState
 import {
   Database,
   Plus,
@@ -21,6 +21,8 @@ import {
   Database as DatabaseType,
 } from "@/hooks/use-optimized-tia-app";
 import { Translations } from "@/lib/i18n";
+import { deleteDocument as deleteDocumentService } from "@/services/api"; // API service
+import { useToast } from "@/hooks/use-toast"; // Toast notifications
 
 interface DatabasePanelProps {
   isVisible: boolean;
@@ -66,13 +68,13 @@ const DatabasePanel = memo<DatabasePanelProps>(
     onDragHandlers,
     t,
   }) => {
-    const [editingDatabase, setEditingDatabase] = React.useState<string | null>(
-      null,
-    );
-    const [editingDocument, setEditingDocument] = React.useState<string | null>(
-      null,
-    );
-    const [newDatabaseName, setNewDatabaseName] = React.useState("");
+    const { toast } = useToast();
+    const userId = "default_user"; // Placeholder for actual user ID
+    const [editingDatabase, setEditingDatabase] = useState<string | null>(null);
+    const [editingDocument, setEditingDocument] = useState<string | null>(null);
+    const [newDatabaseName, setNewDatabaseName] = useState("");
+    const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
 
     const createDatabase = useCallback(() => {
       if (!newDatabaseName.trim()) return;
@@ -119,23 +121,40 @@ const DatabasePanel = memo<DatabasePanelProps>(
     );
 
     const deleteDocument = useCallback(
-      (dbId: string, docId: string) => {
+    async (dbId: string, docId: string, docName: string) => {
         if (confirm(t.confirmDelete)) {
+        setDeletingDocId(docId);
+        try {
+          await deleteDocumentService(docName, userId); // API call
           onDatabaseAction((prev) =>
             prev.map((db) =>
               db.id === dbId
                 ? {
                     ...db,
                     documents: db.documents.filter((doc) => doc.id !== docId),
-                    documentCount: db.documentCount - 1,
+                    documentCount: Math.max(0, db.documentCount - 1), // Ensure not negative
                     lastModified: new Date().toISOString().split("T")[0],
                   }
                 : db,
             ),
           );
+          toast({
+            title: "Document Deleted",
+            description: `${docName} has been successfully deleted.`,
+          });
+        } catch (error) {
+          console.error("Failed to delete document:", error);
+          toast({
+            title: "Error Deleting Document",
+            description: (error as Error)?.message || `Could not delete ${docName}.`,
+            variant: "destructive",
+          });
+        } finally {
+          setDeletingDocId(null);
+        }
         }
       },
-      [onDatabaseAction, t.confirmDelete],
+    [onDatabaseAction, t.confirmDelete, toast, userId], // Added toast and userId
     );
 
     const renameDocument = useCallback(
@@ -445,10 +464,15 @@ const DatabasePanel = memo<DatabasePanelProps>(
                                 className="h-5 w-5 p-0"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  deleteDocument(database.id, doc.id);
+                                  deleteDocument(database.id, doc.id, doc.name);
                                 }}
+                                disabled={deletingDocId === doc.id}
                               >
-                                <Trash2 className="h-2 w-2" />
+                                {deletingDocId === doc.id ? (
+                                  <Loader2 className="h-2 w-2 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-2 w-2" />
+                                )}
                               </Button>
                             </div>
                           </div>
@@ -456,19 +480,16 @@ const DatabasePanel = memo<DatabasePanelProps>(
                             <span>
                               {doc.type} • {doc.pages} {t.pages} • {doc.size}
                             </span>
-                            {doc.processingStatus === "processing" && (
+                            {doc.processingStatus === "processing" || deletingDocId === doc.id ? (
                               <span className="text-yellow-600 flex items-center">
                                 <Loader2 className="h-2 w-2 animate-spin mr-1" />
-                                Processing
+                                {deletingDocId === doc.id ? "Deleting..." : "Processing..."}
                               </span>
-                            )}
-                            {doc.isProcessed && (
+                            ) : doc.isProcessed ? (
                               <span className="text-green-600">
                                 ✓ Processed
                               </span>
-                            )}
-                            {!doc.isProcessed &&
-                              doc.processingStatus !== "processing" && (
+                            ) : (
                                 <span className="text-gray-500">
                                   Not processed
                                 </span>
