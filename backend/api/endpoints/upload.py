@@ -2,7 +2,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 import os
 import shutil
-from services.document_processor import process_document
+from services.process_and_store import process_document # Changed import
 
 router = APIRouter()
 
