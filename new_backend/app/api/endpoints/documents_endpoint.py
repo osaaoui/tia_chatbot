@@ -2,98 +2,140 @@ import os
 import shutil
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends, Body
-from typing import List
+from typing import List, Optional
 
 from ...core.config import settings
 from ...services import processing_service, vectorstore_service
-from ...models.schemas import UploadResponse, DeleteRequest, DeleteResponse, FileDeleteStatus
+from ...models.schemas import StagedUploadResponse, DeleteRequest, DeleteResponse, FileDeleteStatus, ProcessRequest, ProcessResponse, FileProcessStatus
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=settings.LOG_LEVEL)
 
 
-@router.post("/upload/", response_model=UploadResponse)
-async def upload_document_api(
+@router.post("/upload/", response_model=StagedUploadResponse) # Changed response model
+async def stage_upload_api( # Renamed function for clarity
     user_id: str = Form(...),
     file: UploadFile = File(...)
 ):
     """
-    Handles uploading a single PDF document, processing it, and adding it to the vector store.
+    Handles uploading a single PDF document and staging it for later processing.
+    File is saved to a user-specific directory in STAGED_FILES_DIR.
     """
-    user_upload_dir = settings.UPLOADED_FILES_DIR / user_id
-    user_upload_dir.mkdir(parents=True, exist_ok=True)
+    user_staging_dir = settings.STAGED_FILES_DIR / user_id
+    user_staging_dir.mkdir(parents=True, exist_ok=True)
 
-    file_path = user_upload_dir / file.filename
+    # Sanitize filename (optional, but good practice)
+    # filename = secure_filename(file.filename) # Example, if using a utility
+    filename = file.filename # Assuming filename is generally safe for now
+    staged_file_path = user_staging_dir / filename
 
-    # Save the uploaded file
+    # Save the uploaded file to staging area
     try:
-        with open(file_path, "wb") as buffer:
+        with open(staged_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        logger.info(f"File '{file.filename}' uploaded to '{file_path}' for user '{user_id}'.")
+        logger.info(f"File '{filename}' staged to '{staged_file_path}' for user '{user_id}'.")
     except Exception as e:
-        logger.error(f"Error saving uploaded file '{file.filename}' for user '{user_id}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Could not save file: {str(e)}")
+        logger.error(f"Error staging uploaded file '{filename}' for user '{user_id}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Could not stage file: {str(e)}")
     finally:
         file.file.close()
 
-    # Process the saved PDF file
-    try:
-        processed_docs = processing_service.process_uploaded_pdf(
-            uploaded_file_path=str(file_path),
-            original_filename=file.filename,
-            user_id=user_id
-        )
-    except Exception as e:
-        logger.error(f"Error processing file '{file.filename}' for user '{user_id}': {e}", exc_info=True)
-        # Optionally remove the uploaded file if processing fails critically
-        # file_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
-
-    if not processed_docs:
-        logger.warning(f"No processable content found in '{file.filename}' for user '{user_id}'.")
-        # file_path.unlink(missing_ok=True) # Clean up if no content
-        # Depending on strictness, could return 200 with message or an error like 422/500
-        return UploadResponse(
-            filename=file.filename,
-            message="File uploaded but no processable content (text/tables) was extracted.",
-            user_id=user_id,
-            total_chunks_processed=0,
-            table_chunks_extracted=0,
-            text_sections_extracted=0
-        )
-
-    # Count chunk types for response
-    table_chunks_count = sum(1 for doc in processed_docs if doc.metadata.get("content_type") == "table_chunk")
-    text_sections_count = sum(1 for doc in processed_docs if doc.metadata.get("content_type") == "text_section")
-
-    # Add processed documents to the vector store
-    try:
-        success_add = vectorstore_service.add_documents_to_store(
-            user_id=user_id,
-            documents=processed_docs
-        )
-        if not success_add:
-            # This implies an issue with vector store itself or embedding service
-            raise HTTPException(status_code=500, detail="Failed to add processed document chunks to the vector store.")
-    except Exception as e: # Catch any other exception from add_documents_to_store
-        logger.error(f"Failed to add chunks of '{file.filename}' to vector store for user '{user_id}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error adding document to vector store: {str(e)}")
-
-    logger.info(f"Successfully processed and stored '{file.filename}' for user '{user_id}'.")
-    return UploadResponse(
-        filename=file.filename,
-        message="File uploaded, processed, and indexed successfully.",
+    return StagedUploadResponse(
+        filename=filename,
+        message="File successfully staged for processing.",
         user_id=user_id,
-        total_chunks_processed=len(processed_docs),
-        table_chunks_extracted=table_chunks_count,
-        text_sections_extracted=text_sections_count
+        staged_path=str(staged_file_path) # Return the path for reference if needed
+    )
+
+@router.post("/process/", response_model=ProcessResponse)
+async def process_staged_documents_api(
+    request: ProcessRequest = Body(...)
+):
+    """
+    Processes a list of specified staged files for a user.
+    Moves files from staging to processed directory upon success.
+    """
+    user_id = request.user_id
+    filenames_to_process = request.filenames
+    files_status: List[FileProcessStatus] = []
+
+    logger.info(f"Received request to process {len(filenames_to_process)} file(s) for user '{user_id}'.")
+
+    if not filenames_to_process:
+        raise HTTPException(status_code=400, detail="No filenames provided for processing.")
+
+    user_staging_dir = settings.STAGED_FILES_DIR / user_id
+    user_processed_dir = settings.UPLOADED_FILES_DIR / user_id # For successfully processed files
+    user_processed_dir.mkdir(parents=True, exist_ok=True)
+
+    for filename in filenames_to_process:
+        staged_file_path = user_staging_dir / filename
+        processed_file_path = user_processed_dir / filename
+
+        current_file_status = FileProcessStatus(filename=filename, status="pending")
+
+        if not staged_file_path.exists():
+            logger.warning(f"File '{filename}' not found in staging for user '{user_id}'.")
+            current_file_status.status = "file_not_found_in_staging"
+            current_file_status.message = "File was not found in the staging area."
+            files_status.append(current_file_status)
+            continue
+
+        try:
+            logger.info(f"Processing '{filename}' for user '{user_id}' from '{staged_file_path}'.")
+            processed_docs = processing_service.process_uploaded_pdf(
+                uploaded_file_path=str(staged_file_path),
+                original_filename=filename,
+                user_id=user_id
+            )
+
+            if not processed_docs:
+                logger.warning(f"No processable content in '{filename}' for user '{user_id}'.")
+                current_file_status.status = "processing_no_content"
+                current_file_status.message = "No processable text or table content was extracted."
+                # Optionally delete from staging if no content: staged_file_path.unlink(missing_ok=True)
+                files_status.append(current_file_status)
+                continue
+
+            current_file_status.table_chunks_extracted = sum(1 for doc in processed_docs if doc.metadata.get("content_type") == "table_chunk")
+            current_file_status.text_sections_extracted = sum(1 for doc in processed_docs if doc.metadata.get("content_type") == "text_section")
+            current_file_status.total_chunks_processed = len(processed_docs)
+
+            logger.info(f"Adding {len(processed_docs)} chunks of '{filename}' to vector store for user '{user_id}'.")
+            success_add = vectorstore_service.add_documents_to_store(
+                user_id=user_id,
+                documents=processed_docs
+            )
+
+            if not success_add:
+                raise Exception("Failed to add processed document chunks to the vector store.")
+
+            # Move file from staging to processed after successful processing and vector store addition
+            shutil.move(str(staged_file_path), str(processed_file_path))
+            logger.info(f"Moved '{filename}' from staging to processed directory for user '{user_id}'.")
+
+            current_file_status.status = "processed_successfully"
+            current_file_status.message = "File processed and indexed successfully."
+
+        except Exception as e:
+            logger.error(f"Error during processing or storage of '{filename}' for user '{user_id}': {e}", exc_info=True)
+            current_file_status.status = "processing_error"
+            current_file_status.message = str(e)
+
+        files_status.append(current_file_status)
+
+    overall_message = f"Processing attempt completed for {len(filenames_to_process)} file(s)."
+    return ProcessResponse(
+        user_id=user_id,
+        overall_message=overall_message,
+        files_status=files_status
     )
 
 
 @router.post("/delete/", response_model=DeleteResponse)
-async def delete_documents_api(
-    request: DeleteRequest = Body(...) # Use Pydantic model for request body
+async def delete_documents_api( # Assuming this still deletes from PROCESSED files
+    request: DeleteRequest = Body(...)
 ):
     """
     Deletes specified documents (and their embeddings) for a user.

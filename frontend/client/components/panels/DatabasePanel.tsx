@@ -21,7 +21,8 @@ import {
   Database as DatabaseType,
 } from "@/hooks/use-optimized-tia-app";
 import { Translations } from "@/lib/i18n";
-import { deleteDocument as deleteDocumentService } from "@/services/api"; // API service
+// Use the new service function name and types
+import { deleteDocuments as deleteDocumentsService, ApiDeleteRequestData, ApiDeleteResponseData } from "@/services/api";
 import { useToast } from "@/hooks/use-toast"; // Toast notifications
 
 interface DatabasePanelProps {
@@ -122,13 +123,58 @@ const DatabasePanel = memo<DatabasePanelProps>(
 
     const deleteDocument = useCallback(
     async (dbId: string, docId: string, docName: string) => {
-        if (confirm(t.confirmDelete)) {
-        setDeletingDocId(docId);
+        if (confirm(t.confirmDelete)) { // Standard browser confirm
+        setDeletingDocId(docId); // For UI loading state
+
+        const requestData: ApiDeleteRequestData = {
+          user_id: userId,
+          filenames: [docName] // API expects a list of filenames
+        };
+
         try {
-          await deleteDocumentService(docName, userId); // API call
-          onDatabaseAction((prev) =>
-            prev.map((db) =>
-              db.id === dbId
+          const response: ApiDeleteResponseData = await deleteDocumentsService(requestData); // Call new service
+
+          // Process response - check overall_message and files_status
+          // For simplicity, we'll assume if no error, the local state update is fine.
+          // A more robust handling would inspect response.files_status.
+          if (response.files_status.length > 0 && response.files_status[0].status.includes("successfully")) {
+            onDatabaseAction((prev) =>
+              prev.map((db) =>
+                db.id === dbId
+                  ? {
+                      ...db,
+                      documents: db.documents.filter((doc) => doc.id !== docId),
+                      documentCount: Math.max(0, db.documentCount - 1),
+                      lastModified: new Date().toISOString().split("T")[0],
+                    }
+                  : db,
+              ),
+            );
+            toast({
+              title: "Document Deleted",
+              description: response.files_status[0].message || `${docName} has been successfully deleted.`,
+            });
+          } else {
+            // Handle cases where deletion might have partially failed or file not found on backend
+            const statusMsg = response.files_status.length > 0 ? response.files_status[0].message : "Unknown status from backend.";
+            throw new Error(response.overall_message || statusMsg);
+          }
+        } catch (error) {
+          console.error("Failed to delete document:", error);
+          toast({
+            title: "Error Deleting Document",
+            description: (error as Error)?.message || `Could not delete ${docName}.`,
+            variant: "destructive",
+          });
+        } finally {
+          setDeletingDocId(null);
+        }
+        }
+      },
+    [onDatabaseAction, t.confirmDelete, toast, userId],
+    );
+
+    const renameDocument = useCallback(
                 ? {
                     ...db,
                     documents: db.documents.filter((doc) => doc.id !== docId),

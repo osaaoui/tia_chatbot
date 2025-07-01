@@ -42,18 +42,37 @@ import {
   ChatMessage,
   SavedChat,
   AppSettings,
+  ChatMessage as AppChatMessage, // Renaming to avoid conflict if ChatMessage is defined locally
 } from "@/hooks/use-optimized-tia-app";
-import { useSearch } from "@/hooks/use-optimized-tia-app"; // This might be from the same file or a different one
+import { useSearch } from "@/hooks/use-optimized-tia-app";
 import { Language, Translations } from "@/lib/i18n";
-import { queryDocuments } from "@/services/api"; // API service
-import { useToast } from "@/hooks/use-toast"; // Toast notifications
+// Import new request/response types and the service
+import { queryDocuments, ApiQueryRequestData, ApiQueryResponseData, ApiSourceDocumentData } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
+
+// Define ChatMessage type if it's not already globally available or needs specific fields here
+// For now, assuming AppChatMessage from use-optimized-tia-app is sufficient.
+// If not, it might be:
+// interface ChatMessage {
+//   id: string;
+//   type: "user" | "bot";
+//   content: string;
+//   timestamp: string;
+//   documentReferences?: ApiSourceDocumentData[]; // Updated to use new type
+// }
+
 
 interface ChatInterfaceProps {
   chatState: {
-    messages: ChatMessage[];
+    messages: AppChatMessage[]; // Use AppChatMessage from use-optimized-tia-app
     currentMessage: string;
     currentChatId: string;
   };
+  // chatState: { // Removed duplicate
+  //   messages: ChatMessage[];
+  //   currentMessage: string;
+  //   currentChatId: string;
+  // };
   savedChats: SavedChat[];
   settings: AppSettings;
   dragState: {
@@ -146,18 +165,27 @@ const ChatInterface = memo<ChatInterfaceProps>(
 
       setIsBotReplying(true);
 
-      try {
-        const backendResponse = await queryDocuments(currentMessageContent, userId);
+      const queryData: ApiQueryRequestData = {
+        user_id: userId,
+        question: currentMessageContent,
+        // top_k: 5 // Example: if you want to control top_k from frontend, pass it here
+      };
 
-        const botMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(), // Ensure unique ID
+      try {
+        const backendResponse: ApiQueryResponseData = await queryDocuments(queryData);
+
+        // The AppChatMessage from useOptimizedTiaApp might need its documentReferences field updated
+        // to store ApiSourceDocumentData[] or just filenames as strings.
+        // For now, let's assume documentReferences in AppChatMessage can store simplified source info (e.g., filenames).
+        // If AppChatMessage.documentReferences needs to be richer, its definition in useOptimizedTiaApp should change.
+
+        const botResponseMessage: AppChatMessage = { // Use AppChatMessage
+          id: (Date.now() + 1).toString(),
           type: "bot",
           content: backendResponse.answer,
           timestamp: new Date().toISOString(),
-          // Assuming backendResponse.sources is an array of strings or objects
-          // that can be mapped to string document references.
-          // If sources are objects, extract the relevant identifier (e.g., source.filename)
-          documentReferences: backendResponse.sources ? backendResponse.sources.map((s: any) => typeof s === 'string' ? s : s.source || s.filename || 'Unknown Source') : [],
+          // Store the full ApiSourceDocumentData objects from the backend response
+          documentReferences: backendResponse.sources,
         };
 
         // Add bot message to state
@@ -533,15 +561,17 @@ const ChatInterface = memo<ChatInterfaceProps>(
                               </div>
                               <div className="flex flex-wrap gap-1">
                                 {message.documentReferences.map(
-                                  (docId, index) => (
+                                  (source: ApiSourceDocumentData, index: number) => ( // Iterate over ApiSourceDocumentData
                                     <button
                                       key={index}
                                       onClick={() =>
-                                        onSelectDocumentReference?.(docId)
+                                        // onSelectDocumentReference expects a string, typically the filename
+                                        onSelectDocumentReference?.(source.filename || "Unknown Document")
                                       }
                                       className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300 font-medium text-xs bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded transition-colors hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                                      title={source.preview || `Page: ${source.page || 'N/A'}`} // Show preview or page on hover
                                     >
-                                      [{docId}]
+                                      [{source.filename}{source.page ? ` (p. ${source.page})` : ''}]
                                     </button>
                                   ),
                                 )}

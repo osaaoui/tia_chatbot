@@ -31,8 +31,25 @@ export interface ChatMessage {
   type: "user" | "bot";
   content: string;
   timestamp: string;
-  documentReferences?: string[];
+  documentReferences?: ApiSourceDocumentData[]; // Changed from string[]
 }
+
+// Import ApiSourceDocumentData if not already (should be if api.ts is structured well)
+// Assuming ApiSourceDocumentData is available or defined in a shared types location
+// For this example, if it's only in api.ts, we'd need to import it here.
+// To keep this file self-contained for the diff, let's add a placeholder if not imported.
+// Ideally: import { ApiSourceDocumentData } from '@/services/api'; (or a shared types file)
+
+// Placeholder if ApiSourceDocumentData is not directly importable here for the diff tool:
+interface ApiSourceDocumentData {
+  filename: string;
+  page?: number | null;
+  content_type?: string | null;
+  section_title?: string | null;
+  table_page?: number | null;
+  preview?: string | null;
+}
+
 
 export interface SavedChat {
   id: string;
