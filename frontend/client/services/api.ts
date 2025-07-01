@@ -2,18 +2,29 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000'; // Backend URL
 
+export interface SourceDocument {
+  filename: string;
+  page: number;
+  content_type?: string;
+  section_title?: string;
+  content?: string;
+}
 // Interface for the response of the chat/query endpoint
 export interface ChatResponse {
+  question: string;
   answer: string;
-  sources: any[]; // Define more specific type if sources structure is known
+  sources: SourceDocument[];
+  user_id: string;
 }
 
-// Interface for upload response
 export interface UploadResponse {
   filename: string;
   message: string;
+  user_id: string;
+  total_chunks_processed: number;
+  table_chunks_extracted: number;
+  text_sections_extracted: number;
 }
-
 // Interface for delete response
 export interface DeleteResponse {
   status: string;
@@ -32,19 +43,22 @@ export const uploadDocument = async (file: File, userId: string): Promise<Upload
   formData.append('user_id', userId);
 
   try {
-    const response = await axios.post<UploadResponse>(`${API_BASE_URL}/upload/upload/`, formData, {
+    const response = await axios.post<UploadResponse>(`${API_BASE_URL}/api/v2/documents/upload/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
     });
     return response.data;
   } catch (error) {
-    console.error('Error uploading document:', error);
-    if (axios.isAxiosError(error) && error.response) {
-      throw new Error(error.response.data.detail || 'Failed to upload document');
-    }
-    throw new Error('Failed to upload document');
+  console.error('Error uploading document:', error);
+  if (axios.isAxiosError(error)) {
+    console.error("Status:", error.response?.status);
+    console.error("Response:", error.response?.data);
+    throw new Error(error.response?.data?.detail || 'Failed to upload document');
   }
+  throw new Error('Failed to upload document');
+}
+
 };
 
 /**
@@ -78,7 +92,7 @@ export const deleteDocument = async (filename: string, userId: string): Promise<
  */
 export const queryDocuments = async (question: string, userId: string): Promise<ChatResponse> => {
   try {
-    const response = await axios.post<ChatResponse>(`${API_BASE_URL}/chat/`, {
+    const response = await axios.post<ChatResponse>(`${API_BASE_URL}/api/v2/query/`, {
       question,
       user_id: userId,
     });
