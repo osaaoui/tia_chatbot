@@ -7,7 +7,7 @@ from .core.config import settings # For log level and CORS origins
 from .api.endpoints import documents_endpoint, query_endpoint
 from .models.schemas import HealthCheck # For health check response model
 
-# Configure logging   log
+# Configure logging   log 2
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
 logger = logging.getLogger(__name__)
 
