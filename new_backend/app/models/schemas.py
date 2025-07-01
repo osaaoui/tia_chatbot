@@ -1,14 +1,31 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
-# --- Upload Endpoint ---
-class UploadResponse(BaseModel):
+# --- Upload Endpoint (now for Staging) ---
+class StagedUploadResponse(BaseModel):
     filename: str
     message: str
     user_id: str
-    total_chunks_processed: int
-    table_chunks_extracted: int
-    text_sections_extracted: int
+    staged_path: str # Path where the file is staged on the server
+
+# --- Process Endpoint ---
+class ProcessRequest(BaseModel):
+    user_id: str = Field(..., description="The ID of the user whose documents are to be processed.")
+    filenames: List[str] = Field(..., description="A list of filenames (from the staging area) to be processed.")
+
+class FileProcessStatus(BaseModel):
+    filename: str
+    status: str # e.g., "processed_successfully", "file_not_found", "processing_error"
+    message: Optional[str] = None
+    total_chunks_processed: Optional[int] = None
+    table_chunks_extracted: Optional[int] = None
+    text_sections_extracted: Optional[int] = None
+
+class ProcessResponse(BaseModel):
+    user_id: str
+    overall_message: str
+    files_status: List[FileProcessStatus]
+
 
 # --- Delete Endpoint ---
 class DeleteRequest(BaseModel):
