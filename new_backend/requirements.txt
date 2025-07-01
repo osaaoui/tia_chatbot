@@ -1,35 +1,47 @@
+# FastAPI and Server
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
-python-multipart>=0.0.6
-# For form data (file uploads)
+python-multipart>=0.0.6 # For form data (file uploads)
 
-# Langchain core and community components
+# Langchain - Core, OpenAI integration
 langchain>=0.1.0
-langchain-community>=0.0.20
-# For loaders, vectorstores, embeddings etc.
-langchain-openai>=0.0.5
-# For ChatOpenAI, adjust if using a different LLM provider package
+langchain-openai>=0.1.0 # Includes OpenAIEmbeddings, ChatOpenAI
+# langchain-community might be needed for other loaders/components if added later
 
-# Vectorstore
-chromadb>=0.4.15
-# ChromaDB client
+# Vector Store
+chromadb>=0.4.22 # ChromaDB client
 
-# Embeddings Model
-sentence-transformers>=2.2.0
-# For HuggingFaceEmbeddings
+# Document Loaders & Processing
+pypdf>=3.15.0 # For PDF loading (PyPDFLoader)
 
-# Document Loaders
-pypdf>=3.15.0
-# For PDF loading
-# python-docx # For .doc/.docx if UnstructuredWordDocumentLoader needs it explicitly and it's not in langchain's extras
-# unstructured # Often a dependency for various document loaders, can be large. Langchain might pull it in.
-# Add other specific loader dependencies if new types are added (e.g., for .docx, .xlsx)
+# Table Extraction - these have system dependencies
+# User needs to ensure system libraries are installed:
+# - For pdf2image: Poppler (e.g., `conda install -c conda-forge poppler` or `sudo apt-get install poppler-utils`)
+# - For pytesseract: Tesseract OCR engine (e.g., `sudo apt-get install tesseract-ocr` and language packs)
+# - For camelot-py: Ghostscript, tk (e.g., `sudo apt-get install ghostscript python3-tk`)
+camelot-py[cv]>=0.11.0 # [cv] installs OpenCV dependencies needed by Camelot
+pytesseract>=0.3.10
+pdf2image>=1.16.0
+pandas>=1.3.0 # Often a dependency for table processing, good to have explicitly
 
-# PyTorch (CPU version by default, adjust if GPU is needed)
-# Sentence Transformers will attempt to use GPU if available and torch is built with CUDA.
-# If specific version is needed or GPU: follow PyTorch official installation guide.
-# https://pytorch.org/get-started/locally/
-torch>=2.0.0
+# Environment Variable Management
+python-dotenv>=1.0.0
 
-# Optional, but good for pydantic settings or other features
-# pydantic-settings>=2.0.0
+# OpenAI client (Langchain OpenAI might include it, but good to specify)
+openai>=1.3.0
+
+# Tokenizer (if any part of the code still uses HuggingFace tokenizers directly)
+# The provided Streamlit code had: from transformers import AutoTokenizer
+# If estimate_token_count or similar is refactored in, this would be needed.
+# For now, assuming OpenAI tokenization is handled internally by langchain-openai.
+# transformers>=4.30.0
+
+# Logging (FastAPI uses standard logging, but if more advanced needed)
+# loguru>=0.7.0
+
+# Note: Specific versions of PyTorch are not listed here as OpenAI embeddings
+# do not require local PyTorch. If any other embedding or LLM model requiring
+# PyTorch (e.g., from HuggingFace) were to be used, it would need to be added.
+
+# Ensure that your Python version is compatible with these packages, typically Python 3.8+
+# Remember to install system dependencies for camelot-py, pytesseract, and pdf2image.
