@@ -121,3 +121,4 @@ export const queryDocuments = async (data: ApiQueryRequestData): Promise<ApiQuer
     throw new Error('Failed to query documents');
   }
 };
+

@@ -8,9 +8,13 @@ from ..core.config import settings # Relative import from core
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=settings.LOG_LEVEL)
 
+from typing import Optional
+
 # Initialize OpenAI Embeddings
 # This will use the OPENAI_API_KEY from environment variables (via settings)
 try:
+    logger.info(f"Loaded OPENAI_API_KEY: {'SET' if settings.OPENAI_API_KEY else 'NOT SET'}")
+
     embeddings_model = OpenAIEmbeddings(
         model=settings.EMBEDDING_MODEL_NAME,
         openai_api_key=settings.OPENAI_API_KEY
@@ -20,7 +24,7 @@ except Exception as e:
     logger.error(f"Failed to initialize OpenAIEmbeddings: {e}. Ensure OPENAI_API_KEY is set.", exc_info=True)
     embeddings_model = None # Application might not function correctly without embeddings
 
-def get_vectorstore(user_id: str, create_if_not_exists: bool = True) -> Chroma | None:
+def get_vectorstore(user_id: str, create_if_not_exists: bool = True) -> Optional[Chroma]:
     """
     Loads an existing ChromaDB vector store for a user or creates one if it doesn't exist.
     Data is persisted in user-specific directories.
@@ -157,7 +161,7 @@ def delete_documents_from_store(user_id: str, filenames: list[str]) -> bool:
         logger.error(f"Error deleting documents from vector store for user {user_id}: {e}", exc_info=True)
         return False
 
-def get_retriever(user_id: str, search_type: str = "similarity", search_kwargs: dict | None = None):
+def get_retriever(user_id: str, search_type: str = "similarity", search_kwargs: Optional[dict] = None):
     """
     Returns a retriever object from the user's vector store.
     Default search_kwargs if not provided: {'k': 15} (as in user's code)
