@@ -12,3 +12,4 @@ env/
 # macOS or system files
 .DS_Store
 
+new_backend/chroma_store/
