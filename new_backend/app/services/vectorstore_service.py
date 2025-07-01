@@ -1,152 +1,244 @@
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from chromadb.config import Settings
+import logging
 import os
-import shutil
+from langchain_community.vectorstores import Chroma
+from langchain_openai import OpenAIEmbeddings
+from langchain.docstore.document import Document as LangchainDocument # For type hinting
+from ..core.config import settings # Relative import from core
 
-# Configuration
-CHROMA_DB_DIR = "./chroma_data" # Directory to persist ChromaDB data
-COLLECTION_NAME_PREFIX = "docs_collection_" # Prefix for user-specific collections
-EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=settings.LOG_LEVEL)
 
-# Initialize embedding function
-# This can be time-consuming, so it's done once when the module is loaded.
+# Initialize OpenAI Embeddings
+# This will use the OPENAI_API_KEY from environment variables (via settings)
 try:
-    embedding_function = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL_NAME,
-        model_kwargs={'device': 'cpu'}, # Explicitly use CPU if GPU is not guaranteed or needed
-        encode_kwargs={'normalize_embeddings': True}
+    embeddings_model = OpenAIEmbeddings(
+        model=settings.EMBEDDING_MODEL_NAME,
+        openai_api_key=settings.OPENAI_API_KEY
     )
+    logger.info(f"Successfully initialized OpenAIEmbeddings model: {settings.EMBEDDING_MODEL_NAME}")
 except Exception as e:
-    print(f"Error initializing HuggingFaceEmbeddings: {e}")
-    # Fallback or raise error, depending on desired behavior
-    embedding_function = None
+    logger.error(f"Failed to initialize OpenAIEmbeddings: {e}. Ensure OPENAI_API_KEY is set.", exc_info=True)
+    embeddings_model = None # Application might not function correctly without embeddings
 
-def get_vectorstore_for_user(user_id: str) -> Chroma | None:
+def get_vectorstore(user_id: str, create_if_not_exists: bool = True) -> Chroma | None:
     """
-    Retrieves or creates a ChromaDB vector store for a specific user.
-    Each user will have their own collection to ensure data isolation.
+    Loads an existing ChromaDB vector store for a user or creates one if it doesn't exist.
+    Data is persisted in user-specific directories.
     """
-    if not embedding_function:
-        print("Embedding function not initialized. Cannot get vector store.")
+    if not embeddings_model:
+        logger.error(f"Embeddings model not available for user {user_id}. Cannot get/create vector store.")
         return None
 
-    collection_name = f"{COLLECTION_NAME_PREFIX}{user_id}"
-    persist_directory = os.path.join(CHROMA_DB_DIR, user_id)
-    os.makedirs(persist_directory, exist_ok=True)
+    user_persist_directory = settings.CHROMA_STORE_DIR / user_id
+
+    if not user_persist_directory.exists():
+        if create_if_not_exists:
+            logger.info(f"No existing vector store found for user {user_id} at {user_persist_directory}. Creating new one.")
+            user_persist_directory.mkdir(parents=True, exist_ok=True)
+            # We can't just return an empty Chroma store without documents typically.
+            # It's better to let it be created when documents are first added,
+            # or initialize it empty if ChromaDB supports that well for persistence.
+            # For now, we'll rely on from_documents or add_documents to create it.
+            # A simple way to initialize an empty one that can be persisted:
+            try:
+                db = Chroma(
+                    embedding_function=embeddings_model,
+                    persist_directory=str(user_persist_directory)
+                )
+                # db.persist() # Ensure the directory structure is made if not already.
+                logger.info(f"Created empty vector store for user {user_id} at {user_persist_directory}")
+                return db
+            except Exception as e:
+                logger.error(f"Error creating empty vector store for user {user_id}: {e}", exc_info=True)
+                return None
+        else:
+            logger.info(f"Vector store for user {user_id} does not exist and create_if_not_exists is False.")
+            return None
 
     try:
+        logger.info(f"Loading existing vector store for user {user_id} from {user_persist_directory}.")
         vectorstore = Chroma(
-            collection_name=collection_name,
-            embedding_function=embedding_function,
-            persist_directory=persist_directory,
-            client_settings=Settings(
-                anonymized_telemetry=False,
-                is_persistent=True, # Ensure data is persisted
-                # chroma_db_impl="duckdb+parquet", # Default, good for persistence
-            )
+            persist_directory=str(user_persist_directory),
+            embedding_function=embeddings_model
         )
+        # Test if the collection is accessible (e.g. by trying a dummy get)
+        # vectorstore.get(limit=1) # This might raise an error if collection doesn't exist or is empty
+        logger.info(f"Successfully loaded vector store for user {user_id}.")
         return vectorstore
     except Exception as e:
-        print(f"Error creating or loading vector store for user {user_id}: {e}")
+        # This can happen if the directory exists but is corrupted or not a valid Chroma store
+        logger.error(f"Error loading vector store for user {user_id} from {user_persist_directory}: {e}", exc_info=True)
+        # Optionally, try to re-initialize or clean up
         return None
 
-def add_documents(user_id: str, documents: list) -> bool:
+
+def add_documents_to_store(user_id: str, documents: list[LangchainDocument]) -> bool:
     """
-    Adds document chunks to the specified user's vector store.
-    'documents' is a list of Langchain Document objects.
+    Adds a list of Langchain Document objects to the user's ChromaDB vector store.
+    If the store doesn't exist, it will be created.
     """
+    if not embeddings_model:
+        logger.error(f"Embeddings model not available for user {user_id}. Cannot add documents.")
+        return False
     if not documents:
-        print(f"No documents provided to add for user {user_id}.")
-        return False
+        logger.warning(f"No documents provided to add for user {user_id}.")
+        return True # Or False, depending on desired behavior for empty list
 
-    vectorstore = get_vectorstore_for_user(user_id)
-    if not vectorstore:
-        return False
+    user_persist_directory = str(settings.CHROMA_STORE_DIR / user_id)
+    os.makedirs(user_persist_directory, exist_ok=True) # Ensure directory exists
 
     try:
-        vectorstore.add_documents(documents=documents)
-        # vectorstore.persist() # Ensure persistence after adding. Chroma client settings might handle this.
-        print(f"Successfully added {len(documents)} chunks to user {user_id}'s collection.")
+        # Chroma.from_documents handles creation if store/collection doesn't exist,
+        # or adds to existing if it does (though this behavior can vary with Chroma versions/config).
+        # For more explicit control, one might load then add.
+        # However, to ensure it appends or creates robustly:
+
+        # Try to load existing store first
+        vectorstore = get_vectorstore(user_id, create_if_not_exists=True) # It will create an empty one if not found
+        if vectorstore:
+            vectorstore.add_documents(documents=documents)
+            logger.info(f"Added {len(documents)} documents to existing store for user {user_id}.")
+        else: # Should not happen if get_vectorstore creates one, but as a fallback
+            logger.info(f"No existing store, creating new store with documents for user {user_id}.")
+            vectorstore = Chroma.from_documents(
+                documents=documents,
+                embedding=embeddings_model,
+                persist_directory=user_persist_directory
+            )
+
+        vectorstore.persist() # Ensure changes are saved
+        logger.info(f"Successfully added {len(documents)} documents and persisted store for user {user_id}.")
         return True
     except Exception as e:
-        print(f"Error adding documents for user {user_id}: {e}")
+        logger.error(f"Error adding documents to vector store for user {user_id}: {e}", exc_info=True)
         return False
 
-def delete_documents_by_filename(user_id: str, filename: str) -> bool:
+def delete_documents_from_store(user_id: str, filenames: list[str]) -> bool:
     """
-    Deletes all document chunks associated with a specific filename from the user's vector store.
-    This relies on the 'source' metadata field matching the filename.
+    Deletes documents from the user's ChromaDB where the 'source' metadata field matches any of the given filenames.
     """
-    vectorstore = get_vectorstore_for_user(user_id)
+    if not filenames:
+        logger.info(f"No filenames provided for deletion for user {user_id}.")
+        return True
+
+    vectorstore = get_vectorstore(user_id, create_if_not_exists=False)
     if not vectorstore:
-        return False
+        logger.warning(f"Vector store not found for user {user_id}. Cannot delete documents.")
+        return False # Or True if no store means documents are "deleted"
 
     try:
-        # Chroma's API for deletion usually requires IDs. We need to get IDs based on metadata.
-        # This can be inefficient for large collections if not directly supported.
-        # Langchain's Chroma wrapper might offer a more direct way or one may need to use Chroma client directly.
+        # To delete by metadata, we typically need the document IDs.
+        # We fetch documents that match the source metadata and then delete by their IDs.
+        ids_to_delete_all_files = []
+        for filename_to_delete in filenames:
+            # Chroma's get method can filter by metadata using `where` clause
+            # Example: where={"source": filename_to_delete}
+            # This is more efficient than fetching all and filtering in Python.
+            retrieved_docs = vectorstore.get(
+                where={"source": filename_to_delete},
+                include=[] # We only need IDs for deletion
+            )
+            ids_for_current_file = retrieved_docs.get("ids", [])
+            if ids_for_current_file:
+                logger.info(f"Found {len(ids_for_current_file)} embedding(s) for file '{filename_to_delete}' for user {user_id}.")
+                ids_to_delete_all_files.extend(ids_for_current_file)
+            else:
+                logger.info(f"No embeddings found for file '{filename_to_delete}' for user {user_id}.")
 
-        # Fetch all documents and filter by metadata (less efficient for very large DBs)
-        # A more direct way with Chroma client: collection.delete(where={"source": filename})
-        collection = vectorstore._collection # Access underlying Chroma collection
-        results = collection.get(where={"source": filename}, include=[]) # Only need IDs
-        ids_to_delete = results.get("ids", [])
+        if not ids_to_delete_all_files:
+            logger.info(f"No embeddings found matching any of the provided filenames for user {user_id}. Nothing to delete.")
+            return True # Successfully "deleted" nothing
 
-        if not ids_to_delete:
-            print(f"No documents found with filename '{filename}' for user {user_id} to delete.")
-            return False
-
-        collection.delete(ids=ids_to_delete)
-        # vectorstore.persist() # Ensure persistence
-        print(f"Successfully deleted documents with filename '{filename}' for user {user_id}.")
+        vectorstore.delete(ids=ids_to_delete_all_files)
+        vectorstore.persist() # Persist changes after deletion
+        logger.info(f"Successfully deleted {len(ids_to_delete_all_files)} embeddings for user {user_id} corresponding to {len(filenames)} file(s).")
         return True
     except Exception as e:
-        print(f"Error deleting documents for user {user_id} with filename '{filename}': {e}")
+        logger.error(f"Error deleting documents from vector store for user {user_id}: {e}", exc_info=True)
         return False
 
-def similarity_search(user_id: str, query: str, k: int = 4) -> list:
+def get_retriever(user_id: str, search_type: str = "similarity", search_kwargs: dict | None = None):
     """
-    Performs a similarity search in the user's vector store.
-    Returns 'k' most similar document chunks.
+    Returns a retriever object from the user's vector store.
+    Default search_kwargs if not provided: {'k': 15} (as in user's code)
     """
-    vectorstore = get_vectorstore_for_user(user_id)
+    if search_kwargs is None:
+        search_kwargs = {'k': 15}
+
+    vectorstore = get_vectorstore(user_id, create_if_not_exists=False)
     if not vectorstore:
-        return []
+        logger.warning(f"Vector store not found for user {user_id}. Cannot create retriever.")
+        return None
 
     try:
-        results = vectorstore.similarity_search(query, k=k)
-        print(f"Found {len(results)} similar documents for query by user {user_id}.")
-        return results
+        retriever = vectorstore.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+        logger.info(f"Successfully created retriever for user {user_id} with search_kwargs: {search_kwargs}")
+        return retriever
     except Exception as e:
-        print(f"Error during similarity search for user {user_id}: {e}")
-        return []
+        logger.error(f"Error creating retriever for user {user_id}: {e}", exc_info=True)
+        return None
 
-def delete_user_collection(user_id: str) -> bool:
-    """
-    Deletes an entire collection for a user.
-    Useful for GDPR or user data removal.
-    Also removes the persisted directory.
-    """
-    try:
-        # This is more of a Chroma client operation
-        # For Langchain's wrapper, if it doesn't expose delete_collection,
-        # one might need to get the client and call it.
-        # Alternatively, just deleting the persist_directory might be enough
-        # if the collection is not managed by a central Chroma server.
+if __name__ == '__main__':
+    # Basic tests for vectorstore_service (requires OPENAI_API_KEY)
+    # Ensure your .env file or environment has OPENAI_API_KEY set
+    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "your_openai_api_key_here":
+        print("Skipping vectorstore_service tests: OPENAI_API_KEY not set.")
+    elif not embeddings_model:
+        print("Skipping vectorstore_service tests: Embeddings model failed to initialize.")
+    else:
+        print("Running vectorstore_service tests...")
+        test_user = "test_user_vs"
 
-        # For a standalone Chroma setup as used here, deleting the directory is key.
-        persist_directory = os.path.join(CHROMA_DB_DIR, user_id)
-        if os.path.exists(persist_directory):
-            shutil.rmtree(persist_directory)
-            print(f"Successfully deleted persisted data for user {user_id} at {persist_directory}.")
-            # Additionally, if using a Chroma client instance, you'd call:
-            # client = chromadb.PersistentClient(path=CHROMA_DB_DIR_BASE_PATH_FOR_CLIENT_INIT)
-            # client.delete_collection(name=f"{COLLECTION_NAME_PREFIX}{user_id}")
-            return True
-        else:
-            print(f"No persisted data found for user {user_id} at {persist_directory}.")
-            return False # Or True if non-existence is also success
-    except Exception as e:
-        print(f"Error deleting collection or data for user {user_id}: {e}")
-        return False
+        # Cleanup previous test data if any
+        import shutil
+        user_chroma_dir = settings.CHROMA_STORE_DIR / test_user
+        if user_chroma_dir.exists():
+            shutil.rmtree(user_chroma_dir)
+
+        # Test get/create
+        vs = get_vectorstore(test_user)
+        assert vs is not None, "Failed to get/create vector store."
+        print(f"Vector store for {test_user} obtained/created.")
+
+        # Test add documents
+        docs_to_add = [
+            LangchainDocument(page_content="This is document 1 about apples.", metadata={"source": "doc1.txt"}),
+            LangchainDocument(page_content="Document 2 discusses bananas.", metadata={"source": "doc2.txt"}),
+            LangchainDocument(page_content="Another part of document 1 about red apples.", metadata={"source": "doc1.txt"}),
+        ]
+        added = add_documents_to_store(test_user, docs_to_add)
+        assert added, "Failed to add documents."
+        print(f"Added {len(docs_to_add)} documents.")
+
+        # Test retriever and similarity search
+        retriever = get_retriever(test_user)
+        assert retriever is not None, "Failed to get retriever."
+        results = retriever.invoke("Tell me about apples")
+        assert len(results) > 0, "Similarity search returned no results."
+        print(f"Retrieved {len(results)} documents for 'apples' query. First hit: {results[0].page_content}")
+        assert "apple" in results[0].page_content.lower()
+
+        # Test delete documents
+        deleted = delete_documents_from_store(test_user, ["doc1.txt"])
+        assert deleted, "Failed to delete documents for doc1.txt."
+        print("Deleted documents for doc1.txt.")
+
+        # Verify deletion
+        retriever_after_delete = get_retriever(test_user)
+        results_after_delete = retriever_after_delete.invoke("Tell me about apples")
+
+        # Check if any remaining results are from doc1.txt
+        found_doc1_after_delete = any(doc.metadata.get("source") == "doc1.txt" for doc in results_after_delete)
+        assert not found_doc1_after_delete, "doc1.txt found after deletion."
+        print("Verified doc1.txt is no longer retrieved for 'apples' query.")
+
+        # Test deleting a non-existent document
+        deleted_non_existent = delete_documents_from_store(test_user, ["non_existent.txt"])
+        assert deleted_non_existent, "Deleting non-existent document should be 'successful' (no error)."
+        print("Attempted to delete non-existent document, processed successfully.")
+
+        # Clean up test user data
+        if user_chroma_dir.exists():
+            shutil.rmtree(user_chroma_dir)
+        print(f"Cleaned up test data for user {test_user}.")
+        print("vectorstore_service tests completed.")
