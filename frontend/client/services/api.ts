@@ -1,38 +1,73 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000'; // Backend URL
+const API_BASE_URL = 'http://localhost:8000'; // Ensure this matches your backend URL
 
-// Interface for the response of the chat/query endpoint
-export interface ChatResponse {
-  answer: string;
-  sources: any[]; // Define more specific type if sources structure is known
-}
-
-// Interface for upload response
-export interface UploadResponse {
+// --- Upload Endpoint Response (matches Pydantic UploadResponse) ---
+export interface ApiUploadResponse {
   filename: string;
   message: string;
+  user_id: string;
+  total_chunks_processed: number;
+  table_chunks_extracted: number;
+  text_sections_extracted: number;
 }
 
-// Interface for delete response
-export interface DeleteResponse {
-  status: string;
-  message: string;
+// --- Delete Endpoint Request & Response (matches Pydantic DeleteRequest, FileDeleteStatus, DeleteResponse) ---
+export interface ApiDeleteRequestData {
+  user_id: string;
+  filenames: string[];
 }
+
+export interface ApiFileDeleteStatus {
+  filename: string;
+  status: string;
+  message?: string | null;
+}
+
+export interface ApiDeleteResponseData {
+  user_id: string;
+  overall_message: string;
+  files_status: ApiFileDeleteStatus[];
+}
+
+// --- Query Endpoint Request & Response (matches Pydantic QueryRequest, SourceDocument, QueryResponse) ---
+export interface ApiQueryRequestData {
+  user_id: string;
+  question: string;
+  top_k?: number; // Optional, as Pydantic model has a default
+}
+
+export interface ApiSourceDocumentData {
+  filename: string;
+  page?: number | null;
+  content_type?: string | null;
+  section_title?: string | null;
+  table_page?: number | null;
+  preview?: string | null;
+}
+
+export interface ApiQueryResponseData {
+  question: string;
+  answer: string;
+  sources: ApiSourceDocumentData[];
+  user_id: string;
+}
+
 
 /**
  * Uploads a document to the backend.
  * @param file The file to upload.
  * @param userId The ID of the user uploading the file.
- * @returns Promise resolving to UploadResponse
+ * @returns Promise resolving to ApiUploadResponse
  */
-export const uploadDocument = async (file: File, userId: string): Promise<UploadResponse> => {
+export const uploadDocument = async (file: File, userId: string): Promise<ApiUploadResponse> => {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('user_id', userId);
+  formData.append('user_id', userId); // Backend expects user_id as Form data
 
   try {
-    const response = await axios.post<UploadResponse>(`${API_BASE_URL}/upload/upload/`, formData, {
+    // Path updated to /api/v2/documents/upload/
+    const response = await axios.post<ApiUploadResponse>(`${API_BASE_URL}/api/v2/documents/upload/`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -48,40 +83,35 @@ export const uploadDocument = async (file: File, userId: string): Promise<Upload
 };
 
 /**
- * Deletes a document from the backend.
- * @param filename The name of the file to delete.
- * @param userId The ID of the user who owns the file.
- * @returns Promise resolving to DeleteResponse
+ * Deletes one or more documents from the backend.
+ * @param data The data for the delete request, including user_id and list of filenames.
+ * @returns Promise resolving to ApiDeleteResponseData
  */
-export const deleteDocument = async (filename: string, userId: string): Promise<DeleteResponse> => {
-  const formData = new FormData();
-  formData.append('filename', filename);
-  formData.append('user_id', userId);
-
+export const deleteDocuments = async (data: ApiDeleteRequestData): Promise<ApiDeleteResponseData> => {
   try {
-    const response = await axios.post<DeleteResponse>(`${API_BASE_URL}/delete/`, formData);
+    // Path updated to /api/v2/documents/delete/
+    // Data sent as JSON body
+    const response = await axios.post<ApiDeleteResponseData>(`${API_BASE_URL}/api/v2/documents/delete/`, data);
     return response.data;
   } catch (error) {
-    console.error('Error deleting document:', error);
+    console.error('Error deleting documents:', error);
     if (axios.isAxiosError(error) && error.response) {
-      throw new Error(error.response.data.detail || 'Failed to delete document');
+      throw new Error(error.response.data.detail || 'Failed to delete documents');
     }
-    throw new Error('Failed to delete document');
+    throw new Error('Failed to delete documents');
   }
 };
 
 /**
  * Sends a query to the backend and gets a response.
- * @param question The question to ask.
- * @param userId The ID of the user asking the question.
- * @returns Promise resolving to ChatResponse
+ * @param data The data for the query request, including user_id, question, and optional top_k.
+ * @returns Promise resolving to ApiQueryResponseData
  */
-export const queryDocuments = async (question: string, userId: string): Promise<ChatResponse> => {
+export const queryDocuments = async (data: ApiQueryRequestData): Promise<ApiQueryResponseData> => {
   try {
-    const response = await axios.post<ChatResponse>(`${API_BASE_URL}/chat/`, {
-      question,
-      user_id: userId,
-    });
+    // Path updated to /api/v2/query/
+    // Data sent as JSON body
+    const response = await axios.post<ApiQueryResponseData>(`${API_BASE_URL}/api/v2/query/`, data);
     return response.data;
   } catch (error) {
     console.error('Error querying documents:', error);

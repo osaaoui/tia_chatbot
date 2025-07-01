@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Database, Document } from "./use-optimized-tia-app";
-import { uploadDocument } from "@/services/api"; // Assuming services is aliased to @/services
+import { uploadDocument, ApiUploadResponse } from "@/services/api"; // Import ApiUploadResponse
 import { useToast } from "./use-toast"; // For user feedback
 
 interface FileUploadHookProps {
@@ -49,29 +49,32 @@ export function useFileUpload({
 
       for (const file of validFiles) {
         try {
-          const response = await uploadDocument(file, userId);
-          // Assuming the backend now handles document processing and state
-          // The frontend state (databases, setDatabases) might need to be updated
-          // based on a re-fetch or a more sophisticated state management strategy.
-          // For now, let's simulate adding it to the local state for immediate UI feedback,
-          // but this should ideally be driven by the backend's response or a subsequent fetch.
+          const response: ApiUploadResponse = await uploadDocument(file, userId); // Use new response type
 
-          const fileType = fileOperations.getFileType(file.name);
+          // Backend now directly processes and returns details.
+          // Update local state based on this more detailed response.
+          const fileType = fileOperations.getFileType(response.filename);
           const newDoc: Document = {
-            id: response.filename, // Use filename from response as ID, or a backend-generated ID
+            id: response.filename, // Using filename as ID, ensure uniqueness or use backend ID if provided
             name: response.filename,
-            type: fileType,
-            size: fileOperations.formatFileSize(file.size),
-            pages: 0, // This info might come from backend later
-            createdDate: new Date().toISOString().split("T")[0],
+            type: fileType, // This is the broad type (PDF, Word)
+            size: fileOperations.formatFileSize(file.size), // Original file size
+            pages: response.text_sections_extracted, // Approximation, or if backend can count pages
+            createdDate: new Date().toISOString().split("T")[0], // Should ideally come from backend if it stores this
             addedDate: new Date().toISOString().split("T")[0],
-            content: `Uploaded: ${response.filename}`, // Placeholder
-            fileType,
-            isProcessed: false, // Backend will update this; could be true if processing is synchronous
-            processingStatus: "processing", // Or "completed" based on backend logic
+            content: response.message, // Use backend message or a summary
+            fileType, // Redundant with type, but part of Document interface
+            isProcessed: true, // Since this endpoint now processes directly
+            processingStatus: "completed", // Mark as completed
+            // We could add response.total_chunks_processed, etc. to the Document model if needed
           };
 
-          // Update local state (consider if this is the right approach long-term)
+          // Update local state.
+          // The logic for updating `databases` (especially `documentCount` and `size`)
+          // should be robust. If `targetDbId` represents a specific collection that the
+          // `userId` maps to on the backend, this can work.
+          // If all docs for a user go to one pool, `targetDbId` might be less relevant for backend,
+          // but still useful for UI grouping.
           // This part is tricky as the backend is the source of truth.
           // A common pattern is to re-fetch the document list for the targetDbId
           // or update based on a websocket message, or simply trust the backend.
