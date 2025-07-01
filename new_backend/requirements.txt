@@ -1,0 +1,35 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+# For form data (file uploads)
+
+# Langchain core and community components
+langchain>=0.1.0
+langchain-community>=0.0.20
+# For loaders, vectorstores, embeddings etc.
+langchain-openai>=0.0.5
+# For ChatOpenAI, adjust if using a different LLM provider package
+
+# Vectorstore
+chromadb>=0.4.15
+# ChromaDB client
+
+# Embeddings Model
+sentence-transformers>=2.2.0
+# For HuggingFaceEmbeddings
+
+# Document Loaders
+pypdf>=3.15.0
+# For PDF loading
+# python-docx # For .doc/.docx if UnstructuredWordDocumentLoader needs it explicitly and it's not in langchain's extras
+# unstructured # Often a dependency for various document loaders, can be large. Langchain might pull it in.
+# Add other specific loader dependencies if new types are added (e.g., for .docx, .xlsx)
+
+# PyTorch (CPU version by default, adjust if GPU is needed)
+# Sentence Transformers will attempt to use GPU if available and torch is built with CUDA.
+# If specific version is needed or GPU: follow PyTorch official installation guide.
+# https://pytorch.org/get-started/locally/
+torch>=2.0.0
+
+# Optional, but good for pydantic settings or other features
+# pydantic-settings>=2.0.0
