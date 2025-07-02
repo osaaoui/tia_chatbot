@@ -80,6 +80,14 @@ export interface LoginRequest {
 //   token_type: string;
 // }
 
+// --- Interface for listing user's processed documents ---
+export interface ApiUserDocumentInfo {
+  filename: string;
+  size: number; // Size in bytes
+  modified_date: string; // ISO format date string
+  file_type: string; // Derived from extension, e.g., "pdf", "txt"
+}
+
 
 /**
  * Uploads a document to the backend.
@@ -186,5 +194,25 @@ export const loginUser = async (data: LoginRequest): Promise<UserResponse> => {
       throw new Error(error.response.data.detail || 'Login failed');
     }
     throw new Error('Login failed due to an unexpected error');
+  }
+};
+
+/**
+ * Lists all processed documents for a given user.
+ * @param userId The ID of the user.
+ * @returns Promise resolving to an array of ApiUserDocumentInfo.
+ */
+export const listUserProcessedDocuments = async (userId: string): Promise<ApiUserDocumentInfo[]> => {
+  try {
+    const response = await axios.get<ApiUserDocumentInfo[]>(`${API_BASE_URL}/api/v2/documents/list_processed/`, {
+      params: { user_id: userId } // Send user_id as a query parameter
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error listing user documents:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(error.response.data.detail || 'Failed to list documents');
+    }
+    throw new Error('Failed to list documents due to an unexpected error');
   }
 };

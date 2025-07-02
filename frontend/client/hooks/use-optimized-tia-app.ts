@@ -394,77 +394,9 @@ export function useOptimizedTiaApp() {
     }
   }, [settings]);
 
-  // Data state with memoization
-  const [databases, setDatabases] = useState<Database[]>([
-    {
-      id: "1",
-      name: "Company Policies",
-      size: "25.4 MB",
-      documentCount: 12,
-      createdDate: "2024-01-15",
-      lastModified: "2024-01-20",
-      documents: [
-        {
-          id: "doc1",
-          name: "Employee Handbook.pdf",
-          type: "PDF",
-          size: "2.1 MB",
-          pages: 45,
-          createdDate: "2024-01-10",
-          addedDate: "2024-01-15",
-          content:
-            "This comprehensive employee handbook outlines company policies, procedures, and guidelines for all staff members. It covers workplace conduct, benefits, time-off policies, and professional development opportunities. Section 1: Introduction to Company Culture. Our company values integrity, innovation, and collaboration. We believe in creating an inclusive environment where every employee can thrive. Section 2: Code of Conduct. All employees are expected to maintain professional behavior at all times. This includes respectful communication, punctuality, and adherence to company policies.",
-          fileType: "PDF",
-        },
-        {
-          id: "doc2",
-          name: "Security Guidelines.docx",
-          type: "Word",
-          size: "1.8 MB",
-          pages: 32,
-          createdDate: "2024-01-12",
-          addedDate: "2024-01-16",
-          content:
-            "Security guidelines and protocols for maintaining information security and data protection within the organization. This document covers password policies, data handling procedures, and incident response protocols. Password Requirements: Minimum 12 characters, mix of uppercase, lowercase, numbers, and special characters. Two-factor authentication is mandatory for all accounts.",
-          fileType: "Word",
-        },
-      ],
-    },
-    {
-      id: "2",
-      name: "Technical Documentation",
-      size: "45.2 MB",
-      documentCount: 28,
-      createdDate: "2024-01-10",
-      lastModified: "2024-01-22",
-      documents: [
-        {
-          id: "doc3",
-          name: "API Documentation.pdf",
-          type: "PDF",
-          size: "3.2 MB",
-          pages: 78,
-          createdDate: "2024-01-08",
-          addedDate: "2024-01-11",
-          content:
-            "Complete API documentation including endpoints, authentication methods, request/response formats, and integration examples for developers. REST API Endpoints: GET /api/users - Retrieve user list. POST /api/users - Create new user. PUT /api/users/{id} - Update user. DELETE /api/users/{id} - Delete user. Authentication: Bearer token required in Authorization header.",
-          fileType: "PDF",
-        },
-        {
-          id: "doc4",
-          name: "Project Timeline.xlsx",
-          type: "Excel",
-          size: "1.5 MB",
-          pages: 12,
-          createdDate: "2024-01-20",
-          addedDate: "2024-01-20",
-          content:
-            "Project timeline and milestone tracking spreadsheet. Contains task assignments, deadlines, progress tracking, and resource allocation for the Q1 2024 development cycle.",
-          fileType: "Excel",
-        },
-      ],
-    },
-  ]);
+  // Data state: Initialize databases as an empty array.
+  // This will be populated after login by fetching user's processed documents.
+  const [databases, setDatabases] = useState<Database[]>([]);
 
   // Document state
   const [documentState, setDocumentState] = useState({
