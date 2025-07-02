@@ -22,12 +22,15 @@ import {
 } from "@/hooks/use-optimized-tia-app";
 import { Translations } from "@/lib/i18n";
 // Use the new service function name and types
-import { deleteDocuments as deleteDocumentsService, ApiDeleteRequestData, ApiDeleteResponseData } from "@/services/api";
+import { deleteDocuments as deleteDocumentsService, ApiDeleteRequestData, ApiDeleteResponseData, UserResponse } from "@/services/api";
 import { useToast } from "@/hooks/use-toast"; // Toast notifications
+import { LogOut } from "lucide-react"; // For Logout button icon
 
 interface DatabasePanelProps {
   isVisible: boolean;
   databases: DatabaseType[];
+  currentUser: UserResponse | null; // Added
+  logout: () => void; // Added
   selectedDatabase: string | null;
   processing: {
     isProcessing: boolean;
@@ -68,9 +71,12 @@ const DatabasePanel = memo<DatabasePanelProps>(
     onFileUpload,
     onDragHandlers,
     t,
+    currentUser, // Destructure new props
+    logout,      // Destructure new props
   }) => {
     const { toast } = useToast();
-    const userId = "default_user"; // Placeholder for actual user ID
+    // Use userId from currentUser, fallback if necessary (though currentUser should be present)
+    const userId = currentUser?.username || "default_user";
     const [editingDatabase, setEditingDatabase] = useState<string | null>(null);
     const [editingDocument, setEditingDocument] = useState<string | null>(null);
     const [newDatabaseName, setNewDatabaseName] = useState("");
@@ -318,10 +324,11 @@ const DatabasePanel = memo<DatabasePanelProps>(
               </Button>
             </div>
 
-            {/* New Database Input */}
-            <div className="mt-2 flex gap-2">
-              <Input
-                placeholder={t.databaseName}
+            {/* New Database Input - Admin Only */}
+            {currentUser?.role === 'admin' && (
+              <div className="mt-2 flex gap-2">
+                <Input
+                  placeholder={t.databaseName}
                 value={newDatabaseName}
                 onChange={(e) => setNewDatabaseName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && createDatabase()}
@@ -332,12 +339,13 @@ const DatabasePanel = memo<DatabasePanelProps>(
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
+            )}
 
-            {/* Process Documents - Only show when there are unprocessed documents */}
-            {unprocessedDocsCount > 0 && (
+            {/* Process Documents - Admin Only and if there are unprocessed documents */}
+            {currentUser?.role === 'admin' && unprocessedDocsCount > 0 && (
               <div className="mt-2 flex gap-2">
                 <Button
-                  onClick={onDragHandlers.processDocuments}
+                  onClick={onDragHandlers.processDocuments} // This button's functionality might need review with deferred processing changes
                   disabled={processing.isProcessing}
                   size="sm"
                   className="flex-1"
@@ -352,7 +360,7 @@ const DatabasePanel = memo<DatabasePanelProps>(
               </div>
             )}
 
-            {/* Enhanced Processing Progress */}
+            {/* Enhanced Processing Progress - Visible to all if processing is ongoing */}
             {processing.isProcessing && (
               <div className="mt-2">
                 <div className="flex justify-between text-xs mb-1">
@@ -414,26 +422,32 @@ const DatabasePanel = memo<DatabasePanelProps>(
                       )}
                     </div>
                     <div className="flex items-center space-x-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingDatabase(database.id);
-                        }}
-                      >
-                        <Edit3 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteDatabase(database.id);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      {currentUser?.role === 'admin' && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingDatabase(database.id);
+                            }}
+                            title={t.renameDatabase}
+                          >
+                            <Edit3 className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteDatabase(database.id);
+                            }}
+                            title={t.deleteDatabase}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -493,33 +507,39 @@ const DatabasePanel = memo<DatabasePanelProps>(
                               )}
                             </div>
                             <div className="flex space-x-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingDocument(doc.id);
-                                }}
-                              >
-                                <Edit3 className="h-2 w-2" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteDocument(database.id, doc.id, doc.name);
-                                }}
-                                disabled={deletingDocId === doc.id}
-                              >
-                                {deletingDocId === doc.id ? (
-                                  <Loader2 className="h-2 w-2 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-2 w-2" />
-                                )}
-                              </Button>
+                              {currentUser?.role === 'admin' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 w-5 p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingDocument(doc.id);
+                                    }}
+                                    title={t.renameDocument}
+                                  >
+                                    <Edit3 className="h-2 w-2" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-5 w-5 p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteDocument(database.id, doc.id, doc.name);
+                                    }}
+                                    disabled={deletingDocId === doc.id}
+                                    title={t.deleteDocument}
+                                  >
+                                    {deletingDocId === doc.id ? (
+                                      <Loader2 className="h-2 w-2 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-2 w-2" />
+                                    )}
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="flex justify-between text-xs text-gray-400 mt-1">
@@ -544,9 +564,10 @@ const DatabasePanel = memo<DatabasePanelProps>(
                         </div>
                       ))}
 
-                      {/* Add Document Section */}
-                      <div
-                        className={cn(
+                      {/* Add Document Section - Admin Only */}
+                      {currentUser?.role === 'admin' && (
+                        <div
+                          className={cn(
                           "border-2 border-dashed border-gray-300 rounded p-3 transition-all",
                           "hover:border-blue-400 hover:bg-blue-50/50",
                           dragState.dragOver === database.id &&
@@ -587,13 +608,31 @@ const DatabasePanel = memo<DatabasePanelProps>(
                         <p className="text-xs text-gray-400 mt-1 text-center">
                           PDF, Word, Excel, PowerPoint, Images
                         </p>
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               ))}
             </div>
           </ScrollArea>
+
+          {/* User Info and Logout Button Section */}
+          {currentUser && (
+            <div className="p-4 border-t bg-gray-50 dark:bg-gray-700 mt-auto"> {/* mt-auto pushes to bottom if ScrollArea allows flex-grow */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm">
+                  <p className="font-semibold text-gray-800 dark:text-white">
+                    {currentUser.full_name || currentUser.username}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Role: {currentUser.role}</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={logout} title="Logout">
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

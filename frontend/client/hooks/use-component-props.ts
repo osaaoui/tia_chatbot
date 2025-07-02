@@ -1,13 +1,15 @@
 import { useMemo } from "react";
+import { UserResponse } from "@/services/api"; // For currentUser type
 import {
   Database,
   AppSettings,
-  ChatMessage,
+  ChatMessage, // Assuming this is AppChatMessage from use-optimized-tia-app
   SavedChat,
 } from "./use-optimized-tia-app";
 import { Translations } from "@/lib/i18n";
 
-interface ComponentPropsHookParams {
+// Exporting the params type for use in Index.tsx
+export interface UseComponentPropsParams {
   layout: {
     showColumn1: boolean;
     showColumn2: boolean;
@@ -41,8 +43,11 @@ interface ComponentPropsHookParams {
   handleFileUpload: (files: FileList | null, targetDbId: string) => void;
   handleChatFileUpload: (files: FileList | null) => void;
   t: Translations;
+  currentUser: UserResponse | null; // Added
+  logout: () => void;              // Added
 }
 
+// Renamed function to match export convention if needed, or keep as is
 export function useComponentProps({
   layout,
   settings,
@@ -60,16 +65,28 @@ export function useComponentProps({
   handleFileUpload,
   handleChatFileUpload,
   t,
-}: ComponentPropsHookParams) {
+  currentUser, // Destructure new props
+  logout,      // Destructure new props
+}: UseComponentPropsParams) { // Ensure this matches the exported interface name
+
+  // Derive userId for components that need it.
+  // Note: useFileUpload is instantiated in Index.tsx and its props are set there.
+  // If useFileUpload needs userId, Index.tsx should pass it when creating the hook instance.
+  // For DatabasePanel and ChatInterface, we pass currentUser or derived userId.
+  const userId = currentUser?.username || "default_user"; // Fallback if needed, though currentUser should exist on protected routes
+
   const headerProps = useMemo(
     () => ({
-      isAdmin: true,
-      currentUser: { name: "John Doe", initials: "JD" },
+      // isAdmin: currentUser?.role === 'admin', // Derive from currentUser
+      // currentUser: currentUser ? { name: currentUser.full_name || currentUser.username, initials: currentUser.username.substring(0,2).toUpperCase() } : null,
+      // The TiaHeader was requested to be removed. If it's brought back or another header needs this:
+      userFullName: currentUser?.full_name || currentUser?.username,
+      onLogout: logout, // Pass logout function
       onOpenModal: modalManager.openModal,
       language: settings.language,
       t,
     }),
-    [modalManager.openModal, settings.language, t],
+    [currentUser, logout, modalManager.openModal, settings.language, t],
   );
 
   const databasePanelProps = useMemo(
@@ -82,7 +99,7 @@ export function useComponentProps({
       onToggleVisibility: actions.toggleColumn1,
       onDatabaseAction: setDatabases,
       onSelectDocument: actions.selectDocument,
-      onFileUpload: handleFileUpload,
+      onFileUpload: handleFileUpload, // This handleFileUpload needs to use the correct userId
       onDragHandlers: {
         onDragStart: dragAndDrop.handleDragStart,
         onDragOver: dragAndDrop.handleDragOver,
@@ -91,12 +108,15 @@ export function useComponentProps({
           e.preventDefault();
           dragAndDrop.resetDragState();
           if (e.dataTransfer.files.length > 0 && dbId) {
+            // handleFileUpload here is the one passed from Index.tsx, which should be correctly bound with userId
             handleFileUpload(e.dataTransfer.files, dbId);
           }
         },
-        processDocuments: actions.processDocuments,
+        processDocuments: actions.processDocuments, // This also might need userId if it makes API calls
       },
       t,
+      currentUser, // Pass currentUser for role checks and display
+      logout, // Pass logout for user display/logout button in sidebar
     }),
     [
       layout.showColumn1,
@@ -110,6 +130,8 @@ export function useComponentProps({
       handleFileUpload,
       setDatabases,
       t,
+      currentUser,
+      logout,
     ],
   );
 
@@ -148,7 +170,7 @@ export function useComponentProps({
         toggleColumn1: actions.toggleColumn1,
         toggleColumn2: actions.toggleColumn2,
       },
-      onFileUpload: handleChatFileUpload,
+      onFileUpload: handleChatFileUpload, // This also needs to be userId aware
       onDragHandlers: {
         onDragOver: dragAndDrop.handleDragOver,
         onDragLeave: dragAndDrop.handleDragLeave,
@@ -156,6 +178,7 @@ export function useComponentProps({
           e.preventDefault();
           dragAndDrop.setChatDragOver(false);
           if (e.dataTransfer.files.length > 0) {
+            // handleChatFileUpload needs userId
             handleChatFileUpload(e.dataTransfer.files);
           }
         },
@@ -163,6 +186,8 @@ export function useComponentProps({
       },
       onSelectDocumentReference: actions.selectDocumentByReference,
       t,
+      currentUserId: userId, // Pass the derived userId
+      currentUserFullName: currentUser?.full_name || currentUser?.username, // For display purposes if needed
     }),
     [
       chatState,
@@ -175,6 +200,8 @@ export function useComponentProps({
       actions,
       handleChatFileUpload,
       t,
+      userId, // Add userId to dependency array
+      currentUser, // Add currentUser for full name
     ],
   );
 

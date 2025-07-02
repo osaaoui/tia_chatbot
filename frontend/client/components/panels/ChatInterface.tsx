@@ -106,6 +106,7 @@ interface ChatInterfaceProps {
   };
   onSelectDocumentReference?: (documentName: string) => void;
   t: Translations;
+  currentUserId: string | undefined; // Added from useComponentProps
 }
 
 const ChatInterface = memo<ChatInterfaceProps>(
@@ -119,15 +120,16 @@ const ChatInterface = memo<ChatInterfaceProps>(
     onSavedChatsAction,
     onSettingsChange,
     onToggleColumns,
-    onFileUpload,
+    onFileUpload, // This onFileUpload will need userId for handleChatFileUpload in useFileUpload
     onDragHandlers,
     onSelectDocumentReference,
     t,
+    currentUserId, // Destructure currentUserId
   }) => {
     const chatEndRef = useRef<HTMLDivElement>(null);
     const chatFileInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
-    const userId = "default_user"; // Placeholder
+    // const userId = "default_user"; // Removed, use currentUserId prop
     const [isBotReplying, setIsBotReplying] = React.useState(false);
 
 
@@ -164,8 +166,18 @@ const ChatInterface = memo<ChatInterfaceProps>(
 
       setIsBotReplying(true);
 
+      if (!currentUserId) {
+        toast({
+          title: "Authentication Error",
+          description: "User ID is not available. Cannot send message.",
+          variant: "destructive",
+        });
+        setIsBotReplying(false);
+        return;
+      }
+
       const queryData: ApiQueryRequestData = {
-        user_id: userId,
+        user_id: currentUserId, // Use currentUserId from props
         question: currentMessageContent,
         // top_k: 5 // Example: if you want to control top_k from frontend, pass it here
       };

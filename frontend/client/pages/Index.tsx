@@ -3,10 +3,11 @@ import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import { useOptimizedTiaApp } from "@/hooks/use-optimized-tia-app";
 import { useFileUpload } from "@/hooks/use-file-upload";
-import { useComponentProps } from "@/hooks/use-component-props";
+import { useComponentProps, UseComponentPropsParams } from "@/hooks/use-component-props"; // Import UseComponentPropsParams
 import { useThemeEffect } from "@/hooks/use-theme-effect";
+import { useAuth } from "@/context/AuthContext"; // Import useAuth
 
-import TiaHeader from "@/components/layout/TiaHeader";
+import TiaHeader from "@/components/layout/TiaHeader"; // This might be removed later if requested
 import DatabasePanel from "@/components/panels/DatabasePanel";
 import DocumentViewer from "@/components/panels/DocumentViewer";
 import ChatInterface from "@/components/panels/ChatInterface";
@@ -36,24 +37,22 @@ export default function Index() {
   } = appState;
 
   const t = useTranslation(settings.language);
+  const { currentUser, logout } = useAuth(); // Get currentUser and logout from AuthContext
 
   // Custom hooks for cleaner organization
   useThemeEffect(settings);
 
+  // Pass currentUser to useFileUpload if it needs userId, or handle userId within useComponentProps
+  // For now, useFileUpload will get userId via useComponentProps
   const { handleFileUpload, handleChatFileUpload } = useFileUpload({
     databases,
     setDatabases,
     fileOperations,
     t,
+    userId: currentUser?.username, // Pass the authenticated user's username as userId
   });
 
-  const {
-    headerProps,
-    databasePanelProps,
-    documentViewerProps,
-    chatInterfaceProps,
-    modalProps,
-  } = useComponentProps({
+  const componentPropsParams: UseComponentPropsParams = { // Explicitly type if not inferred
     layout,
     settings,
     databases,
@@ -70,7 +69,17 @@ export default function Index() {
     handleFileUpload,
     handleChatFileUpload,
     t,
-  });
+    currentUser, // Pass currentUser
+    logout,      // Pass logout function
+  };
+
+  const {
+    headerProps,
+    databasePanelProps,
+    documentViewerProps,
+    chatInterfaceProps,
+    modalProps,
+  } = useComponentProps(componentPropsParams);
 
   const containerStyle = {
     fontSize: `${settings.fontSize}px`,

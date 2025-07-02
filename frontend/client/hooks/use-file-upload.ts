@@ -12,20 +12,30 @@ interface FileUploadHookProps {
     formatFileSize: (bytes: number) => string;
   };
   t: any; // Localization function, assuming it's passed in
+  userId: string | undefined; // Added userId prop
 }
 
 export function useFileUpload({
-  databases, // Assuming this is still needed for UI updates, though backend is source of truth
-  setDatabases, // Similar to above
+  databases,
+  setDatabases,
   fileOperations,
   t,
+  userId, // Destructure userId
 }: FileUploadHookProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
-  const userId = "default_user"; // Placeholder for actual user ID management
+  // const userId = "default_user"; // Removed hardcoded userId
 
   const handleFileUpload = useCallback(
-    async (files: FileList | null, targetDbId: string) => { // targetDbId might be deprecated if not used by backend
+    async (files: FileList | null, targetDbId: string) => {
+      if (!userId) { // Check if userId is available
+        toast({
+          title: "Authentication Error",
+          description: "User ID is not available. Cannot upload files.",
+          variant: "destructive",
+        });
+        return;
+      }
       if (!files) return;
 
       const validFiles = Array.from(files).filter((file) =>
