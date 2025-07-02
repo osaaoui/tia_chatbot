@@ -93,3 +93,10 @@ class QueryResponse(BaseModel):
 class HealthCheck(BaseModel):
     status: str = "OK"
     message: str = "API is healthy"
+
+# --- Model for listing user's processed documents ---
+class UserDocumentInfo(BaseModel):
+    filename: str
+    size: int # Size in bytes
+    modified_date: str # ISO format date string
+    file_type: str # Derived from extension, e.g., "pdf", "txt"
