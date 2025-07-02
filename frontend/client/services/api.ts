@@ -53,6 +53,33 @@ export interface ApiQueryResponseData {
   user_id: string;
 }
 
+// --- Auth Endpoint Interfaces (matching Pydantic UserBase, UserCreateRequest, UserResponse, LoginRequest) ---
+export interface UserBase {
+  username: string;
+  full_name?: string | null;
+}
+
+export interface UserCreateRequest extends UserBase {
+  password: string;
+  role: string; // "admin" or "reader"
+}
+
+export interface UserResponse extends UserBase {
+  id: string; // Typically the username
+  role: string;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+// Token model (placeholder, not used if login returns UserResponse directly)
+// export interface Token {
+//   access_token: string;
+//   token_type: string;
+// }
+
 
 /**
  * Uploads a document to the backend.
@@ -119,5 +146,45 @@ export const queryDocuments = async (data: ApiQueryRequestData): Promise<ApiQuer
       throw new Error(error.response.data.detail || 'Failed to query documents');
     }
     throw new Error('Failed to query documents');
+  }
+};
+
+// --- Authentication Service Calls ---
+
+/**
+ * Registers a new user.
+ * @param data User creation data including username, password, full_name, and role.
+ * @returns Promise resolving to UserResponse.
+ */
+export const signupUser = async (data: UserCreateRequest): Promise<UserResponse> => {
+  try {
+    const response = await axios.post<UserResponse>(`${API_BASE_URL}/api/v2/auth/signup`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error during user signup:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      // Backend might return specific error messages in error.response.data.detail
+      throw new Error(error.response.data.detail || 'Signup failed');
+    }
+    throw new Error('Signup failed due to an unexpected error');
+  }
+};
+
+/**
+ * Logs in an existing user.
+ * @param data User login credentials (username and password).
+ * @returns Promise resolving to UserResponse.
+ */
+export const loginUser = async (data: LoginRequest): Promise<UserResponse> => {
+  try {
+    const response = await axios.post<UserResponse>(`${API_BASE_URL}/api/v2/auth/login`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error during user login:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      // Backend might return specific error messages in error.response.data.detail
+      throw new Error(error.response.data.detail || 'Login failed');
+    }
+    throw new Error('Login failed due to an unexpected error');
   }
 };
