@@ -4,18 +4,12 @@ from pathlib import Path
 
 # Load environment variables from .env file if it exists
 # Useful for local development
-#env_path = Path(".") / ".env"
-#load_dotenv(dotenv_path=env_path)
-# This should resolve to the .env file location
-env_path = Path(__file__).resolve().parents[3] / ".env"
+env_path = Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
 
-print(f"Loading .env from: {env_path}")
-
-load_dotenv(dotenv_path=env_path)
 class Settings:
     # OpenAI API Key
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY") # Fallback for safety
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "your_openai_api_key_here") # Fallback for safety
 
     # Model Names
     EMBEDDING_MODEL_NAME: str = "text-embedding-3-large"

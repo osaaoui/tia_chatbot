@@ -26,6 +26,31 @@ class ProcessResponse(BaseModel):
     overall_message: str
     files_status: List[FileProcessStatus]
 
+# --- Auth Endpoints ---
+class UserBase(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_-]+$")
+    full_name: Optional[str] = Field(None, max_length=100)
+
+class UserCreateRequest(UserBase):
+    password: str = Field(..., min_length=8, description="User's password")
+    role: str = Field(..., description="User role, e.g., 'admin' or 'reader'")
+
+class UserResponse(UserBase):
+    id: str # Typically username for this simple setup
+    role: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+# Token model (useful if implementing JWT later, for now login returns UserResponse)
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+
 
 # --- Delete Endpoint ---
 class DeleteRequest(BaseModel):

@@ -4,10 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from .core.config import settings # For log level and CORS origins
-from .api.endpoints import documents_endpoint, query_endpoint
+from .api.endpoints import documents_endpoint, query_endpoint, auth_endpoint # Added auth_endpoint
 from .models.schemas import HealthCheck # For health check response model
 
-# Configure logging   log 2
+# Configure logging
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,6 @@ app = FastAPI(
 allowed_origins = [
     "http://localhost:5173",  # Default React frontend (Vite)
     "http://localhost:3000",  # Common React frontend (CRA)
-    "http://localhost:8080"
     # Add other frontend origins if necessary
 ]
 if settings.OPENAI_API_KEY == "your_openai_api_key_here": # A simple check
@@ -40,9 +39,8 @@ app.add_middleware(
     allow_headers=["*"], # Allows all headers
 )
 
-logger.info("Mounted query endpoint")
-
 # Include API routers
+app.include_router(auth_endpoint.router, prefix="/api/v2/auth", tags=["Authentication"]) # Added auth router
 app.include_router(documents_endpoint.router, prefix="/api/v2/documents", tags=["Documents"])
 app.include_router(query_endpoint.router, prefix="/api/v2/query", tags=["Query"])
 
@@ -55,8 +53,6 @@ async def health_check():
     # This can be expanded to check database connections, etc.
     return HealthCheck(status="OK", message="API is healthy and running.")
 
-for route in app.routes:
-    print(route.path, route.methods)
 
 if __name__ == "__main__":
     # This is for development run only using Uvicorn.

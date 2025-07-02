@@ -8,7 +8,6 @@ from ..core.config import settings # Relative import for config
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=settings.LOG_LEVEL)
-from typing import Optional, Tuple, List, Dict
 
 # Initialize ChatOpenAI LLM
 # This will use OPENAI_API_KEY from environment (via settings)
@@ -46,7 +45,7 @@ if the language is spanish and the answer is not in the context, say this: "Lo s
 
 prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE_STR)
 
-def get_answer(question: str, user_id: str) -> Tuple[Optional[str], List[Dict]]:
+def get_answer(question: str, user_id: str) -> tuple[str | None, list[dict]]:
     """
     Answers a question based on documents in the user's vector store using RAG.
 
