@@ -684,6 +684,7 @@ export function useOptimizedTiaApp() {
     // Custom hooks
     modalManager: useModalManager(),
     dragAndDrop: useDragAndDrop(),
-    fileOperations: useFileOperations(),
+    // Memoize fileOperations to stabilize its reference
+    fileOperations: useMemo(() => useFileOperations(), []),
   };
 }
